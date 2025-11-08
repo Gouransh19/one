@@ -71,6 +71,17 @@ chrome.runtime.onMessage.addListener((message: Message, sender: any, sendRespons
       });
       break;
 
+    case 'DELETE_PROMPT_REQUEST':
+      console.log('BACKGROUND: deleting prompt atomically', message.payload);
+      storage.deletePromptAtomic(message.payload.id).then(() => {
+        console.log('BACKGROUND: prompt deleted successfully with atomic operation');
+        sendResponse({ type: 'DELETE_PROMPT_RESPONSE', payload: { success: true } });
+      }).catch((error) => {
+        console.error('BACKGROUND: failed to delete prompt atomically', error);
+        sendResponse({ type: 'DELETE_PROMPT_RESPONSE', payload: { success: false, error: error.message } });
+      });
+      break;
+
     case 'GET_CONCURRENCY_METRICS_REQUEST':
       console.log('BACKGROUND: providing concurrency metrics');
       storage.getConcurrencyMetrics().then(metrics => {

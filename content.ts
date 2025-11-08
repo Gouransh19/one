@@ -19,6 +19,70 @@ const aiService: IAIEnhanceService = new MistralAIEnhanceService();
 // Track enhance button state
 let isEnhanceButtonVisible = false;
 
+// Helper function to show prompt selector with delete handler
+function showPromptSelectorWithDelete(prompts: Prompt[]): void {
+  ui.showPromptSelector(prompts, (selectedPrompt) => {
+    const currentText = ui.getTextAreaValue();
+    const newText = currentText.replace(/\/\/$/, selectedPrompt.template);
+    ui.setTextAreaValue(newText);
+  }, (promptToDelete) => {
+    console.log("CONTENT: Deleting prompt:", promptToDelete);
+    chrome.runtime.sendMessage({
+      type: 'DELETE_PROMPT_REQUEST',
+      payload: { id: promptToDelete.id }
+    } as Message, (response: Message) => {
+      if (response?.type === 'DELETE_PROMPT_RESPONSE') {
+        const deleteResponse = response as any;
+        if (deleteResponse.payload?.success) {
+          ui.hidePromptSelector();
+          // Refresh and show updated list
+          chrome.runtime.sendMessage({ type: 'GET_PROMPTS_REQUEST' } as Message, (refreshResponse: Message) => {
+            if (refreshResponse?.type === 'GET_PROMPTS_RESPONSE' && 'payload' in refreshResponse) {
+              const updatedPrompts: Prompt[] = (refreshResponse as any).payload || [];
+              showPromptSelectorWithDelete(updatedPrompts);
+              ui.showSuccessToast('Prompt deleted successfully!');
+            }
+          });
+        } else {
+          ui.showSuccessToast('Failed to delete prompt: ' + (deleteResponse.payload?.error || 'Unknown error'));
+        }
+      }
+    });
+  });
+}
+
+// Helper function to show context selector with delete handler
+function showContextSelectorWithDelete(contexts: Context[]): void {
+  ui.showContextSelector(contexts, (selectedContext) => {
+    const currentText = ui.getTextAreaValue();
+    const newText = currentText.replace(/@$/, selectedContext.text);
+    ui.setTextAreaValue(newText);
+  }, (contextToDelete) => {
+    console.log("CONTENT: Deleting context:", contextToDelete);
+    chrome.runtime.sendMessage({
+      type: 'DELETE_CONTEXT_REQUEST',
+      payload: { id: contextToDelete.id }
+    } as Message, (response: Message) => {
+      if (response?.type === 'DELETE_CONTEXT_RESPONSE') {
+        const deleteResponse = response as any;
+        if (deleteResponse.payload?.success) {
+          ui.hideContextSelector();
+          // Refresh and show updated list
+          chrome.runtime.sendMessage({ type: 'GET_CONTEXTS_REQUEST' } as Message, (refreshResponse: Message) => {
+            if (refreshResponse?.type === 'GET_CONTEXTS_RESPONSE' && 'payload' in refreshResponse) {
+              const updatedContexts: Context[] = (refreshResponse as any).payload || [];
+              showContextSelectorWithDelete(updatedContexts);
+              ui.showSuccessToast('Context deleted successfully!');
+            }
+          });
+        } else {
+          ui.showSuccessToast('Failed to delete context: ' + (deleteResponse.payload?.error || 'Unknown error'));
+        }
+      }
+    });
+  });
+}
+
 // Initialize text selection detection
 selectionService.onSelectionChange((hasSelection, selectedText) => {
   if (hasSelection) {
@@ -83,13 +147,8 @@ ui.onTextAreaInput(text => {
 
       const prompts: Prompt[] = (response as any).payload || [];
 
-      // Use the UI service to show the selector
-      ui.showPromptSelector(prompts, (selectedPrompt) => {
-        // On select, use the UI service to update the text area
-        const currentText = ui.getTextAreaValue();
-        const newText = currentText.replace(/\/\/$/, selectedPrompt.template);
-        ui.setTextAreaValue(newText);
-      });
+      // Use the helper function to show selector with delete handler
+      showPromptSelectorWithDelete(prompts);
     });
   } else if (text.endsWith('@')) {
     console.log("CONTENT: Detected '@', requesting contexts.");
@@ -103,13 +162,8 @@ ui.onTextAreaInput(text => {
 
       const contexts: Context[] = (response as any).payload || [];
 
-      // Use the UI service to show the context selector
-      ui.showContextSelector(contexts, (selectedContext) => {
-        // On select, use the UI service to update the text area
-        const currentText = ui.getTextAreaValue();
-        const newText = currentText.replace(/@$/, selectedContext.text);
-        ui.setTextAreaValue(newText);
-      });
+      // Use the helper function to show selector with delete handler
+      showContextSelectorWithDelete(contexts);
     });
   } else if (text.endsWith('+')) {
     console.log("CONTENT: Detected '+', opening save prompt modal.");
@@ -191,11 +245,7 @@ ui.onTextAreaInput(text => {
             console.log('CONTENT(fallback): Received response:', response);
             if (response?.type !== 'GET_PROMPTS_RESPONSE' || !('payload' in response)) return;
             const prompts: Prompt[] = (response as any).payload || [];
-            ui.showPromptSelector(prompts, (selectedPrompt) => {
-              const currentText = ui.getTextAreaValue();
-              const newText = currentText.replace(/\/\/$/, selectedPrompt.template);
-              ui.setTextAreaValue(newText);
-            });
+            showPromptSelectorWithDelete(prompts);
           });
           return;
         }
@@ -206,11 +256,7 @@ ui.onTextAreaInput(text => {
             console.log('CONTENT(fallback): Received contexts response:', response);
             if (response?.type !== 'GET_CONTEXTS_RESPONSE' || !('payload' in response)) return;
             const contexts: Context[] = (response as any).payload || [];
-            ui.showContextSelector(contexts, (selectedContext) => {
-              const currentText = ui.getTextAreaValue();
-              const newText = currentText.replace(/@$/, selectedContext.text);
-              ui.setTextAreaValue(newText);
-            });
+            showContextSelectorWithDelete(contexts);
           });
           return;
         }

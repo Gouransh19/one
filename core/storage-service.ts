@@ -190,19 +190,29 @@ export class ChromeStorageService implements IStorageService {
     });
   }
 
-  private async writePromptsMap(map: Record<string, PromptRecord>): Promise<void> {
-    // Merge with latest stored value just before writing to reduce clobber races.
+  private async writePromptsMap(map: Record<string, PromptRecord>, replace: boolean = false): Promise<void> {
+    // If replace is true, write the complete map without merging (for deletions)
+    // Otherwise, merge with latest stored value to reduce clobber races (for saves/updates)
     return new Promise<void>((resolve, reject) => {
       try {
-        chrome.storage.local.get([STORAGE_KEY], (result: any) => {
-          if (chrome.runtime && chrome.runtime.lastError) return reject(chrome.runtime.lastError);
-          const current = result && result[STORAGE_KEY] && typeof result[STORAGE_KEY] === 'object' && !Array.isArray(result[STORAGE_KEY]) ? result[STORAGE_KEY] as Record<string, PromptRecord> : {};
-          const merged = { ...current, ...map } as Record<string, PromptRecord>;
-          chrome.storage.local.set({ [STORAGE_KEY]: merged }, () => {
+        if (replace) {
+          // Direct write for deletions - ensures deleted keys are actually removed
+          chrome.storage.local.set({ [STORAGE_KEY]: map }, () => {
             if (chrome.runtime && chrome.runtime.lastError) return reject(chrome.runtime.lastError);
             resolve();
           });
-        });
+        } else {
+          // Merge for saves/updates to prevent race conditions
+          chrome.storage.local.get([STORAGE_KEY], (result: any) => {
+            if (chrome.runtime && chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+            const current = result && result[STORAGE_KEY] && typeof result[STORAGE_KEY] === 'object' && !Array.isArray(result[STORAGE_KEY]) ? result[STORAGE_KEY] as Record<string, PromptRecord> : {};
+            const merged = { ...current, ...map } as Record<string, PromptRecord>;
+            chrome.storage.local.set({ [STORAGE_KEY]: merged }, () => {
+              if (chrome.runtime && chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+              resolve();
+            });
+          });
+        }
       } catch (err) {
         reject(err);
       }
@@ -311,7 +321,8 @@ export class ChromeStorageService implements IStorageService {
         const map = await this.readPromptsMap();
         if (map.hasOwnProperty(id)) {
           delete map[id];
-          await this.writePromptsMap(map);
+          // Use replace=true to write complete map without merging (prevents deleted item from being restored)
+          await this.writePromptsMap(map, true);
           
           // Verify deletion
           const after = await this.readPromptsMap();
@@ -364,19 +375,29 @@ export class ChromeStorageService implements IStorageService {
     });
   }
 
-  private async writeContextsMap(map: Record<string, ContextRecord>): Promise<void> {
-    // Merge with latest stored value just before writing to reduce clobber races.
+  private async writeContextsMap(map: Record<string, ContextRecord>, replace: boolean = false): Promise<void> {
+    // If replace is true, write the complete map without merging (for deletions)
+    // Otherwise, merge with latest stored value to reduce clobber races (for saves/updates)
     return new Promise<void>((resolve, reject) => {
       try {
-        chrome.storage.local.get([CONTEXTS_STORAGE_KEY], (result: any) => {
-          if (chrome.runtime && chrome.runtime.lastError) return reject(chrome.runtime.lastError);
-          const current = result && result[CONTEXTS_STORAGE_KEY] && typeof result[CONTEXTS_STORAGE_KEY] === 'object' && !Array.isArray(result[CONTEXTS_STORAGE_KEY]) ? result[CONTEXTS_STORAGE_KEY] as Record<string, ContextRecord> : {};
-          const merged = { ...current, ...map } as Record<string, ContextRecord>;
-          chrome.storage.local.set({ [CONTEXTS_STORAGE_KEY]: merged }, () => {
+        if (replace) {
+          // Direct write for deletions - ensures deleted keys are actually removed
+          chrome.storage.local.set({ [CONTEXTS_STORAGE_KEY]: map }, () => {
             if (chrome.runtime && chrome.runtime.lastError) return reject(chrome.runtime.lastError);
             resolve();
           });
-        });
+        } else {
+          // Merge for saves/updates to prevent race conditions
+          chrome.storage.local.get([CONTEXTS_STORAGE_KEY], (result: any) => {
+            if (chrome.runtime && chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+            const current = result && result[CONTEXTS_STORAGE_KEY] && typeof result[CONTEXTS_STORAGE_KEY] === 'object' && !Array.isArray(result[CONTEXTS_STORAGE_KEY]) ? result[CONTEXTS_STORAGE_KEY] as Record<string, ContextRecord> : {};
+            const merged = { ...current, ...map } as Record<string, ContextRecord>;
+            chrome.storage.local.set({ [CONTEXTS_STORAGE_KEY]: merged }, () => {
+              if (chrome.runtime && chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+              resolve();
+            });
+          });
+        }
       } catch (err) {
         reject(err);
       }
@@ -484,7 +505,8 @@ export class ChromeStorageService implements IStorageService {
         const map = await this.readContextsMap();
         if (map.hasOwnProperty(id)) {
           delete map[id];
-          await this.writeContextsMap(map);
+          // Use replace=true to write complete map without merging (prevents deleted item from being restored)
+          await this.writeContextsMap(map, true);
           
           // Verify deletion
           const after = await this.readContextsMap();

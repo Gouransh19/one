@@ -30,6 +30,10 @@ export type Message =
   | { type: 'SAVE_PROMPT_REQUEST'; payload: SavePromptUIResult }
   // Response to a save request, indicating success or failure.
   | { type: 'SAVE_PROMPT_RESPONSE'; payload: { success: boolean; error?: string } }
+  // Request to delete a prompt
+  | { type: 'DELETE_PROMPT_REQUEST'; payload: { id: string } }
+  // Response to a delete prompt request
+  | { type: 'DELETE_PROMPT_RESPONSE'; payload: { success: boolean; error?: string } }
   // Request for concurrency metrics
   | { type: 'GET_CONCURRENCY_METRICS_REQUEST' }
   // Response with concurrency metrics

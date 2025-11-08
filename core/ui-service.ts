@@ -59,8 +59,9 @@ export interface IUIService {
    * Displays the prompt selector UI near the text area.
    * @param prompts The list of prompts to display.
    * @param onSelect The callback to execute when a user selects a prompt.
+   * @param onDelete Optional callback to execute when a user deletes a prompt.
    */
-  showPromptSelector(prompts: Prompt[], onSelect: (selectedPrompt: Prompt) => void): void;
+  showPromptSelector(prompts: Prompt[], onSelect: (selectedPrompt: Prompt) => void, onDelete?: (prompt: Prompt) => void): void;
 
   /**
    * Hides the prompt selector UI.
@@ -81,14 +82,23 @@ export interface IUIService {
    */
   showSuccessToast(message: string): void;
 
+  /**
+   * Displays a confirmation modal for deleting a prompt or context.
+   * @param itemName The name of the item to delete.
+   * @param itemType Either 'prompt' or 'context' to customize the message.
+   * @returns A promise that resolves to true if the user confirms deletion, false if cancelled.
+   */
+  showDeleteConfirmationModal(itemName: string, itemType: 'prompt' | 'context'): Promise<boolean>;
+
   // === Context-related UI ===
 
   /**
    * Displays the context selector UI near the text area.
    * @param contexts The list of contexts to display.
    * @param onSelect The callback to execute when a user selects a context.
+   * @param onDelete Optional callback to execute when a user deletes a context.
    */
-  showContextSelector(contexts: Context[], onSelect: (selectedContext: Context) => void): void;
+  showContextSelector(contexts: Context[], onSelect: (selectedContext: Context) => void, onDelete?: (context: Context) => void): void;
 
   /**
    * Hides the context selector UI.
@@ -325,7 +335,7 @@ export class UIService implements IUIService {
     }
   }
 
-  showPromptSelector(prompts: Prompt[], onSelect: (selectedPrompt: Prompt) => void): void {
+  showPromptSelector(prompts: Prompt[], onSelect: (selectedPrompt: Prompt) => void, onDelete?: (prompt: Prompt) => void): void {
     this.hidePromptSelector(); // Ensure no old selector exists
 
     // If editableEl hasn't been discovered yet (dynamic pages), fall back to the active element.
@@ -355,6 +365,18 @@ export class UIService implements IUIService {
     }
 
     prompts.forEach((p, index) => {
+      // Create container for prompt item (flex layout: name left, delete right)
+      const container = document.createElement('div');
+      container.style.display = 'flex';
+      container.style.alignItems = 'center';
+      container.style.justifyContent = 'space-between';
+      container.style.position = 'relative';
+      container.style.margin = '4px 0';
+      container.style.borderRadius = '4px';
+      container.style.border = '1px solid transparent';
+      container.style.cursor = 'pointer';
+      
+      // Create prompt button (left side - takes remaining space)
       const btn = document.createElement('button');
       btn.textContent = p.name;
       btn.setAttribute('role', 'option');
@@ -363,43 +385,113 @@ export class UIService implements IUIService {
       btn.setAttribute('tabindex', index === 0 ? '0' : '-1'); // First item is focusable
       
       // Enhanced styling for accessibility
-      btn.style.display = 'block';
-      btn.style.width = '100%';
+      btn.style.display = 'flex';
+      btn.style.flex = '1';
       btn.style.textAlign = 'left';
-      btn.style.margin = '4px 0';
       btn.style.padding = '8px 12px';
-      btn.style.border = '1px solid transparent';
+      btn.style.border = 'none';
       btn.style.borderRadius = '4px';
       btn.style.backgroundColor = 'transparent';
       btn.style.color = 'white';
       btn.style.cursor = 'pointer';
+      btn.style.outline = 'none';
       
-      // Focus styles
+      // Create delete button (right side - initially hidden)
+      const deleteBtn = document.createElement('button');
+      deleteBtn.innerHTML = '−';
+      deleteBtn.setAttribute('aria-label', `Delete ${p.name}`);
+      deleteBtn.setAttribute('title', 'Delete prompt');
+      deleteBtn.style.position = 'absolute';
+      deleteBtn.style.right = '4px';
+      deleteBtn.style.width = '20px';
+      deleteBtn.style.height = '20px';
+      deleteBtn.style.display = 'flex';
+      deleteBtn.style.alignItems = 'center';
+      deleteBtn.style.justifyContent = 'center';
+      deleteBtn.style.border = '1px solid #444';
+      deleteBtn.style.borderRadius = '4px';
+      deleteBtn.style.backgroundColor = 'transparent';
+      deleteBtn.style.color = '#888';
+      deleteBtn.style.fontSize = '14px';
+      deleteBtn.style.fontWeight = 'bold';
+      deleteBtn.style.cursor = 'pointer';
+      deleteBtn.style.opacity = '0';
+      deleteBtn.style.transition = 'opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease';
+      deleteBtn.style.outline = 'none';
+      deleteBtn.style.zIndex = '10';
+      
+      // Show delete button on hover
+      container.addEventListener('mouseenter', () => {
+        if (onDelete) {
+          deleteBtn.style.opacity = '1';
+        }
+      });
+      
+      container.addEventListener('mouseleave', () => {
+        deleteBtn.style.opacity = '0';
+      });
+      
+      // Delete button hover styles
+      deleteBtn.addEventListener('mouseenter', () => {
+        deleteBtn.style.backgroundColor = '#2a2a2a';
+        deleteBtn.style.borderColor = '#666';
+        deleteBtn.style.color = '#ff4444';
+      });
+      
+      deleteBtn.addEventListener('mouseleave', () => {
+        deleteBtn.style.backgroundColor = 'transparent';
+        deleteBtn.style.borderColor = '#444';
+        deleteBtn.style.color = '#888';
+      });
+      
+      // Delete button click handler
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        if (!onDelete) return;
+        
+        const confirmed = await this.showDeleteConfirmationModal(p.name, 'prompt');
+        if (confirmed) {
+          onDelete(p);
+        }
+      });
+      
+      // Focus styles for container
       btn.addEventListener('focus', () => {
-        btn.style.backgroundColor = '#333';
-        btn.style.borderColor = '#555';
+        container.style.backgroundColor = '#333';
+        container.style.borderColor = '#555';
         btn.setAttribute('aria-selected', 'true');
         // Remove selection from other items
-        overlay.querySelectorAll('button').forEach(otherBtn => {
+        overlay.querySelectorAll('[role="option"]').forEach(otherBtn => {
           if (otherBtn !== btn) {
             otherBtn.setAttribute('aria-selected', 'false');
-            otherBtn.style.backgroundColor = 'transparent';
-            otherBtn.style.borderColor = 'transparent';
+            const otherContainer = otherBtn.closest('div[style*="display: flex"]') as HTMLElement;
+            if (otherContainer) {
+              otherContainer.style.backgroundColor = 'transparent';
+              otherContainer.style.borderColor = 'transparent';
+            }
           }
         });
       });
       
       btn.addEventListener('blur', () => {
-        btn.style.backgroundColor = 'transparent';
-        btn.style.borderColor = 'transparent';
+        container.style.backgroundColor = 'transparent';
+        container.style.borderColor = 'transparent';
       });
       
+      // Prompt selection click handler
       btn.addEventListener('click', () => {
         onSelect(p);
         this.hidePromptSelector();
       });
       
-      overlay.appendChild(btn);
+      // Append elements to container
+      container.appendChild(btn);
+      if (onDelete) {
+        container.appendChild(deleteBtn);
+      }
+      overlay.appendChild(container);
     });
 
     // Position the overlay
@@ -709,9 +801,156 @@ export class UIService implements IUIService {
     }, 3000);
   }
 
+  showDeleteConfirmationModal(itemName: string, itemType: 'prompt' | 'context'): Promise<boolean> {
+    const modalId = 'delete-confirmation-modal';
+    if (document.getElementById(modalId)) {
+      return Promise.resolve(false);
+    }
+
+    return new Promise<boolean>((resolve) => {
+      // Create modal overlay
+      const overlay = document.createElement('div');
+      overlay.id = modalId;
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      overlay.style.zIndex = '999999';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+
+      // Create modal content
+      const modal = document.createElement('div');
+      modal.style.backgroundColor = '#1a1a1a';
+      modal.style.padding = '24px';
+      modal.style.borderRadius = '8px';
+      modal.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.4)';
+      modal.style.minWidth = '400px';
+      modal.style.maxWidth = '500px';
+      modal.style.border = '1px solid #333';
+
+      const itemTypeLabel = itemType === 'prompt' ? 'prompt' : 'context';
+      const itemTypeCapitalized = itemType === 'prompt' ? 'Prompt' : 'Context';
+
+      modal.innerHTML = `
+        <h2 id="delete-modal-title" style="margin: 0 0 16px 0; color: white; font-size: 20px; font-weight: 600;">Delete ${itemTypeCapitalized}?</h2>
+        <p style="margin: 0 0 24px 0; color: #ccc; font-size: 14px; line-height: 1.5;">
+          Are you sure you want to delete "<strong style="color: white;">${itemName}</strong>"?
+        </p>
+        <p style="margin: 0 0 24px 0; color: #888; font-size: 13px; line-height: 1.4;">
+          This action cannot be undone.
+        </p>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button id="delete-cancel-btn" aria-describedby="delete-cancel-help" style="padding: 10px 20px; border: 1px solid #555; background: #2a2a2a; color: white; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background-color 0.15s ease;">No</button>
+          <button id="delete-confirm-btn" aria-describedby="delete-confirm-help" style="padding: 10px 20px; border: none; background: #dc3545; color: white; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background-color 0.15s ease;">Yes</button>
+        </div>
+        <div id="delete-cancel-help" style="display: none;">Cancel deletion and return to selector</div>
+        <div id="delete-confirm-help" style="display: none;">Confirm deletion of ${itemTypeLabel}</div>
+      `;
+
+      // Add accessibility attributes to modal
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-labelledby', 'delete-modal-title');
+      modal.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('role', 'presentation');
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      // Event handlers
+      const cleanup = () => {
+        // Clean up accessibility service
+        this.accessibilityService.cleanup(modal);
+        
+        // Restore focus
+        this.accessibilityService.restoreFocus();
+        
+        if (overlay.parentElement) {
+          overlay.parentElement.removeChild(overlay);
+        }
+      };
+
+      const handleConfirm = () => {
+        // Announce confirmation
+        this.accessibilityService.announceToScreenReader({
+          message: `${itemTypeCapitalized} "${itemName}" will be deleted`,
+          priority: 'polite'
+        });
+
+        cleanup();
+        resolve(true);
+      };
+
+      const handleCancel = () => {
+        // Announce cancellation
+        this.accessibilityService.announceToScreenReader({
+          message: 'Deletion cancelled',
+          priority: 'polite'
+        });
+
+        cleanup();
+        resolve(false);
+      };
+
+      // Set up accessibility service
+      this.accessibilityService.storeCurrentFocus();
+      this.accessibilityService.setupKeyboardNavigation(modal);
+      this.accessibilityService.handleEscapeKey(modal, handleCancel);
+
+      // Focus the cancel button (safer default)
+      const cancelBtn = modal.querySelector('#delete-cancel-btn') as HTMLButtonElement;
+      cancelBtn.focus();
+
+      // Hover effects for buttons
+      const confirmBtn = modal.querySelector('#delete-confirm-btn') as HTMLButtonElement;
+      confirmBtn.addEventListener('mouseenter', () => {
+        confirmBtn.style.backgroundColor = '#c82333';
+      });
+      confirmBtn.addEventListener('mouseleave', () => {
+        confirmBtn.style.backgroundColor = '#dc3545';
+      });
+
+      cancelBtn.addEventListener('mouseenter', () => {
+        cancelBtn.style.backgroundColor = '#333';
+      });
+      cancelBtn.addEventListener('mouseleave', () => {
+        cancelBtn.style.backgroundColor = '#2a2a2a';
+      });
+
+      // Announce modal opening
+      this.accessibilityService.announceToScreenReader({
+        message: `Delete ${itemTypeLabel} confirmation dialog opened. Press Tab to navigate, Enter to confirm, or Escape to cancel.`,
+        priority: 'assertive'
+      });
+
+      // Add event listeners
+      confirmBtn.addEventListener('click', handleConfirm);
+      cancelBtn.addEventListener('click', handleCancel);
+      
+      // Close on overlay click
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          handleCancel();
+        }
+      });
+
+      // Close on Escape key (already handled by accessibility service, but adding explicit handler)
+      const handleKeydown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          handleCancel();
+          document.removeEventListener('keydown', handleKeydown);
+        }
+      };
+      document.addEventListener('keydown', handleKeydown);
+    });
+  }
+
   // === Context-related UI Implementation ===
 
-  showContextSelector(contexts: Context[], onSelect: (selectedContext: Context) => void): void {
+  showContextSelector(contexts: Context[], onSelect: (selectedContext: Context) => void, onDelete?: (context: Context) => void): void {
     this.hideContextSelector(); // Ensure no old selector exists
     if (!this.editableEl) return;
 
@@ -731,6 +970,18 @@ export class UIService implements IUIService {
     }
 
     contexts.forEach((c, index) => {
+      // Create container for context item (flex layout: name left, delete right)
+      const container = document.createElement('div');
+      container.style.display = 'flex';
+      container.style.alignItems = 'center';
+      container.style.justifyContent = 'space-between';
+      container.style.position = 'relative';
+      container.style.margin = '4px 0';
+      container.style.borderRadius = '4px';
+      container.style.border = '1px solid transparent';
+      container.style.cursor = 'pointer';
+      
+      // Create context button (left side - takes remaining space)
       const btn = document.createElement('button');
       btn.textContent = c.name;
       btn.setAttribute('role', 'option');
@@ -739,43 +990,113 @@ export class UIService implements IUIService {
       btn.setAttribute('tabindex', index === 0 ? '0' : '-1');
       
       // Enhanced styling for accessibility
-      btn.style.display = 'block';
-      btn.style.width = '100%';
+      btn.style.display = 'flex';
+      btn.style.flex = '1';
       btn.style.textAlign = 'left';
-      btn.style.margin = '4px 0';
       btn.style.padding = '8px 12px';
-      btn.style.border = '1px solid transparent';
+      btn.style.border = 'none';
       btn.style.borderRadius = '4px';
       btn.style.backgroundColor = 'transparent';
       btn.style.color = 'white';
       btn.style.cursor = 'pointer';
+      btn.style.outline = 'none';
       
-      // Focus styles
+      // Create delete button (right side - initially hidden)
+      const deleteBtn = document.createElement('button');
+      deleteBtn.innerHTML = '−';
+      deleteBtn.setAttribute('aria-label', `Delete ${c.name}`);
+      deleteBtn.setAttribute('title', 'Delete context');
+      deleteBtn.style.position = 'absolute';
+      deleteBtn.style.right = '4px';
+      deleteBtn.style.width = '20px';
+      deleteBtn.style.height = '20px';
+      deleteBtn.style.display = 'flex';
+      deleteBtn.style.alignItems = 'center';
+      deleteBtn.style.justifyContent = 'center';
+      deleteBtn.style.border = '1px solid #444';
+      deleteBtn.style.borderRadius = '4px';
+      deleteBtn.style.backgroundColor = 'transparent';
+      deleteBtn.style.color = '#888';
+      deleteBtn.style.fontSize = '14px';
+      deleteBtn.style.fontWeight = 'bold';
+      deleteBtn.style.cursor = 'pointer';
+      deleteBtn.style.opacity = '0';
+      deleteBtn.style.transition = 'opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease';
+      deleteBtn.style.outline = 'none';
+      deleteBtn.style.zIndex = '10';
+      
+      // Show delete button on hover
+      container.addEventListener('mouseenter', () => {
+        if (onDelete) {
+          deleteBtn.style.opacity = '1';
+        }
+      });
+      
+      container.addEventListener('mouseleave', () => {
+        deleteBtn.style.opacity = '0';
+      });
+      
+      // Delete button hover styles
+      deleteBtn.addEventListener('mouseenter', () => {
+        deleteBtn.style.backgroundColor = '#2a2a2a';
+        deleteBtn.style.borderColor = '#666';
+        deleteBtn.style.color = '#ff4444';
+      });
+      
+      deleteBtn.addEventListener('mouseleave', () => {
+        deleteBtn.style.backgroundColor = 'transparent';
+        deleteBtn.style.borderColor = '#444';
+        deleteBtn.style.color = '#888';
+      });
+      
+      // Delete button click handler
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        if (!onDelete) return;
+        
+        const confirmed = await this.showDeleteConfirmationModal(c.name, 'context');
+        if (confirmed) {
+          onDelete(c);
+        }
+      });
+      
+      // Focus styles for container
       btn.addEventListener('focus', () => {
-        btn.style.backgroundColor = '#333';
-        btn.style.borderColor = '#555';
+        container.style.backgroundColor = '#333';
+        container.style.borderColor = '#555';
         btn.setAttribute('aria-selected', 'true');
         // Remove selection from other items
-        overlay.querySelectorAll('button').forEach(otherBtn => {
+        overlay.querySelectorAll('[role="option"]').forEach(otherBtn => {
           if (otherBtn !== btn) {
             otherBtn.setAttribute('aria-selected', 'false');
-            otherBtn.style.backgroundColor = 'transparent';
-            otherBtn.style.borderColor = 'transparent';
+            const otherContainer = otherBtn.closest('div[style*="display: flex"]') as HTMLElement;
+            if (otherContainer) {
+              otherContainer.style.backgroundColor = 'transparent';
+              otherContainer.style.borderColor = 'transparent';
+            }
           }
         });
       });
       
       btn.addEventListener('blur', () => {
-        btn.style.backgroundColor = 'transparent';
-        btn.style.borderColor = 'transparent';
+        container.style.backgroundColor = 'transparent';
+        container.style.borderColor = 'transparent';
       });
       
+      // Context selection click handler
       btn.addEventListener('click', () => {
         onSelect(c);
         this.hideContextSelector();
       });
       
-      overlay.appendChild(btn);
+      // Append elements to container
+      container.appendChild(btn);
+      if (onDelete) {
+        container.appendChild(deleteBtn);
+      }
+      overlay.appendChild(container);
     });
 
     // Position the overlay
